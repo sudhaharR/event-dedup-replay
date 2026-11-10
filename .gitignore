@@ -1,0 +1,30 @@
+# Secrets
+.env
+
+# Java
+target/
+*.class
+*.jar
+!**/.mvn/wrapper/maven-wrapper.jar
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node / React
+node_modules/
+dist/
+build/
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
