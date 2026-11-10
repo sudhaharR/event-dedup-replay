@@ -76,3 +76,22 @@ def test_oracle_stops_an_order_at_a_business_rule_violation():
 def test_oracle_gap_means_order_does_not_exist_yet():
     _created, payment, shipped = factory().lifecycle(1, 500.0, "shipped")
     assert expected_state([payment, shipped]).orders == {}
+
+
+def test_stream_printer_tags_each_kind_of_fault(capsys):
+    from edr_sim.display import StreamPrinter
+    f = factory()
+    created, payment, shipped = f.lifecycle(1, 500.0, "shipped")
+    printer = StreamPrinter()
+    printer.sent(shipped)                      # v3 before v1, v2
+    printer.sent(created)
+    printer.sent(payment)
+    printer.sent(payment)                      # same event_id again
+    printer.sent('{"event_id": "X", ')        # broken JSON
+    printer.sent(dict(created, event_id="E-late", entity_id="ORD-L"), late=True)
+    lines = [l for l in capsys.readouterr().out.splitlines() if l.strip()[:1].isdigit()]
+    assert "OUT OF ORDER (v1 not sent yet)" in lines[0]
+    assert lines[1].rstrip().endswith("OrderCreated")      # no tag: next in line
+    assert "REPEAT" in lines[3]
+    assert "POISON" in lines[4]
+    assert "LATE" in lines[5]

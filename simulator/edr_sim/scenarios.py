@@ -12,6 +12,7 @@ from typing import Callable
 
 from . import faults
 from .client import ApiClient
+from .display import StreamPrinter
 from .events import EventFactory, Message
 from .oracle import Expected, expected_state, money
 
@@ -25,6 +26,8 @@ class Options:
     late_ms: int = 1500
     reset: bool = True
     timeout: float = 60.0
+    show_messages: bool = True    # print every message as it is sent
+    show_json: bool = False       # ... including its full JSON
 
 
 @dataclass
@@ -60,6 +63,7 @@ class Run:
         # random tag keeps ids unique across runs, even without a reset (the seed only drives the faults)
         self.factory = EventFactory(run_id=secrets.token_hex(3))
         self.arrivals: list[Message] = []
+        self.printer = StreamPrinter(opts.show_messages, opts.show_json)
 
     # -------------------------------------------------------------- sending
 
@@ -69,10 +73,11 @@ class Run:
         if late:
             time.sleep(self.opts.late_ms / 1000)          # these arrive long after their event_time
             for m in late:
-                self._send_one(m)
+                self._send_one(m, late=True)
 
-    def _send_one(self, m: Message) -> None:
+    def _send_one(self, m: Message, late: bool = False) -> None:
         self.client.send(m)
+        self.printer.sent(m, late)
         self.arrivals.append(m)
         self.result.sent += 1
         if self.opts.rate_ms:

@@ -26,8 +26,11 @@ from edr_sim.scenarios import SCENARIOS, Options, Result, Run, run_scenario
 DEFAULT_URL = os.environ.get("EDR_API_URL", "http://localhost:8080")
 
 
-def print_result(result: Result, index: int, total: int) -> None:
-    print(f"\n[{index}/{total}] {result.name} - {result.description}")
+def print_title(name: str, description: str, index: int, total: int) -> None:
+    print(f"\n[{index}/{total}] {name} - {description}", flush=True)
+
+
+def print_result(result: Result) -> None:
     print(f"      sent {result.sent} message(s) in {result.seconds:.1f}s")
     for c in result.checks:
         print(f"      [{'PASS' if c.passed else 'FAIL'}] {c.name}" + (f"  -> {c.detail}" if c.detail else ""))
@@ -65,14 +68,16 @@ def cmd_run(args) -> int:
     seed = args.seed if args.seed is not None else random.randrange(1_000_000)
     names = list(SCENARIOS) if args.scenario == "all" else [args.scenario]
     opts = Options(orders=args.orders, rate_ms=args.rate_ms, late_ms=args.late_ms,
-                   reset=not args.no_reset, timeout=args.timeout)
+                   reset=not args.no_reset, timeout=args.timeout,
+                   show_messages=not args.quiet, show_json=args.show_json)
 
     print(f"=== CAP-33 event simulator ===  api={args.base_url}  seed={seed}  "
           f"(re-run with --seed {seed} for the same stream)")
     results = []
     for i, name in enumerate(names, start=1):
+        print_title(name, SCENARIOS[name][0], i, len(names))
         result = run_scenario(name, client, seed, opts)
-        print_result(result, i, len(names))
+        print_result(result)
         results.append(result)
 
     passed = sum(r.passed for r in results)
@@ -101,13 +106,11 @@ def cmd_send(args) -> int:
     if not args.no_reset:
         client.reset()
 
-    result = Result("send", f"{args.file} ({'shuffled, ' if args.shuffle else ''}seed {seed})")
-    run = Run(client, seed, Options(rate_ms=args.rate_ms, timeout=args.timeout), result)
-    print(f"Arrival order ({len(messages)} messages, seed {seed}):")
-    for i, m in enumerate(messages, start=1):
-        label = (f"{m.get('event_id')} {m.get('entity_id')} v{m.get('version')} {m.get('event_type')}"
-                 if isinstance(m, dict) else f"(raw) {m[:40]}")
-        print(f"  {i:3}. {label}")
+    result = Result("send", f"{args.file} ({'shuffled, ' if args.shuffle else 'file order, '}seed {seed})")
+    run = Run(client, seed, Options(rate_ms=args.rate_ms, timeout=args.timeout,
+                                    show_messages=not args.quiet, show_json=args.show_json), result)
+    print(f"=== CAP-33 event simulator ===  api={args.base_url}  seed={seed}")
+    print_title(result.name, f"{result.description}, {len(messages)} messages", 1, 1)
 
     start = time.monotonic()
     run.send(messages)
@@ -117,10 +120,10 @@ def cmd_send(args) -> int:
         run.check_against_oracle(order_ids)
     result.seconds = time.monotonic() - start
 
-    print("\nFinal state:")
+    print("      Final state:")
     for o in client.orders():
-        print(f"  {o['order_id']:16} {o['status']:10} paid={o['amount_paid']:>10}  v{o['last_version']}")
-    print_result(result, 1, 1)
+        print(f"        {o['order_id']:16} {o['status']:10} paid={o['amount_paid']:>10}  v{o['last_version']}")
+    print_result(result)
     return 0 if result.passed else 1
 
 
@@ -139,6 +142,8 @@ def main() -> int:
     run.add_argument("--late-ms", type=int, default=1500, help="delay for held-back events (default 1500)")
     run.add_argument("--timeout", type=float, default=60, help="seconds to wait for the consumer")
     run.add_argument("--no-reset", action="store_true", help="keep existing data (ids never collide)")
+    run.add_argument("--quiet", action="store_true", help="do not list each message as it is sent")
+    run.add_argument("--show-json", action="store_true", help="also print the full JSON of each message")
     run.set_defaults(func=cmd_run)
 
     send = sub.add_parser("send", help="send a JSON file of events one by one")
@@ -150,6 +155,8 @@ def main() -> int:
     send.add_argument("--rate-ms", type=int, default=50)
     send.add_argument("--timeout", type=float, default=60)
     send.add_argument("--no-reset", action="store_true")
+    send.add_argument("--quiet", action="store_true", help="do not list each message as it is sent")
+    send.add_argument("--show-json", action="store_true", help="also print the full JSON of each message")
     send.set_defaults(func=cmd_send)
 
     args = parser.parse_args()
