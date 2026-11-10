@@ -1,10 +1,8 @@
 package com.edr.consumer;
 
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 
-@SpringBootTest
-class ConsumerServiceApplicationTests {
+class ConsumerServiceApplicationTests extends AbstractMySqlTest {
 
 	@Test
 	void contextLoads() {

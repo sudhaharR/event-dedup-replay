@@ -1,11 +1,11 @@
 package com.edr.consumer.ingest;
 
+import com.edr.consumer.AbstractMySqlTest;
 import com.edr.consumer.inbox.InboxEvent;
 import com.edr.consumer.inbox.InboxRepository;
 import com.edr.consumer.inbox.InboxStatus;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -23,13 +23,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Integration test against the real MySQL container (port 3307, credentials from ../.env).
- * Each test runs in a transaction that is rolled back, so the inbox stays clean.
+ * Integration test of POST /events against a throwaway MySQL container (see AbstractMySqlTest).
+ * Each test also runs in a transaction that is rolled back.
  */
-@SpringBootTest
 @AutoConfigureMockMvc
 @Transactional
-class IngestApiIntegrationTest {
+class IngestApiIntegrationTest extends AbstractMySqlTest {
 
     @Autowired
     private MockMvc mockMvc;
