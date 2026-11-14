@@ -1,5 +1,8 @@
 package com.edr.consumer.query;
 
+import com.edr.consumer.archive.ArchiveStatus;
+import com.edr.consumer.archive.S3Properties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -9,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,9 +27,13 @@ public class QueryController {
     private static final int MAX_LIMIT = 1000;
 
     private final JdbcTemplate jdbc;
+    private final S3Properties s3;
+    private final ObjectProvider<ArchiveStatus> archiveStatus;
 
-    public QueryController(JdbcTemplate jdbc) {
+    public QueryController(JdbcTemplate jdbc, S3Properties s3, ObjectProvider<ArchiveStatus> archiveStatus) {
         this.jdbc = jdbc;
+        this.s3 = s3;
+        this.archiveStatus = archiveStatus;
     }
 
     @GetMapping("/orders")
@@ -48,9 +56,26 @@ public class QueryController {
         return rows.get(0);
     }
 
+    /** v_metrics plus the health of the S3 raw event log (archive backlog and last error). */
     @GetMapping("/metrics")
     public Map<String, Object> metrics() {
-        return jdbc.queryForMap("SELECT * FROM v_metrics");
+        Map<String, Object> m = new LinkedHashMap<>(jdbc.queryForMap("SELECT * FROM v_metrics"));
+        m.put("s3_enabled", s3.enabled());
+        if (s3.enabled()) {
+            m.put("s3_archive_backlog",
+                    jdbc.queryForObject("SELECT COUNT(*) FROM inbox WHERE s3_key IS NULL", Long.class));
+            m.put("s3_dlq_backlog",
+                    jdbc.queryForObject("SELECT COUNT(*) FROM dead_letter WHERE s3_key IS NULL", Long.class));
+            ArchiveStatus status = archiveStatus.getIfAvailable();
+            if (status != null) {
+                m.put("s3_uploaded", status.uploaded());
+                m.put("s3_failures", status.failures());
+                m.put("s3_last_success_at", status.lastSuccessAt());
+                m.put("s3_last_failure_at", status.lastFailureAt());   // compare with last success: is the error current?
+                m.put("s3_last_error", status.lastError());
+            }
+        }
+        return m;
     }
 
     @GetMapping("/dead-letters")

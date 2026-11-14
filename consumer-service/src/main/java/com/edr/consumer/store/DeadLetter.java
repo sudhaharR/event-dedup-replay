@@ -6,12 +6,14 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.Instant;
 
 /** A rejected (poison) message, isolated with the reason so it never blocks other events. */
 @Entity
 @Table(name = "dead_letter")
+@DynamicUpdate
 public class DeadLetter {
 
     @Id

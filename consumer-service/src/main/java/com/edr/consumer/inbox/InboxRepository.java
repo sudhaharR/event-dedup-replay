@@ -10,4 +10,9 @@ public interface InboxRepository extends JpaRepository<InboxEvent, Long> {
     List<InboxEvent> findTop100ByStatusOrderByIdAsc(InboxStatus status);
 
     long countByStatus(InboxStatus status);
+
+    /** Messages not yet copied to S3 (the archive backlog), oldest first. */
+    List<InboxEvent> findTop200ByS3KeyIsNullOrderByIdAsc();
+
+    long countByS3KeyIsNull();
 }

@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.DynamicUpdate;
 
 import java.time.Instant;
 
@@ -18,6 +19,7 @@ import java.time.Instant;
  */
 @Entity
 @Table(name = "inbox")
+@DynamicUpdate   // UPDATE only changed columns, so the consumer never overwrites s3_key set by the archiver
 public class InboxEvent {
 
     @Id
