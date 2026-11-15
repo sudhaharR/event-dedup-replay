@@ -5,6 +5,7 @@
   python simulate.py run --scenario duplicate_payment
   python simulate.py run --scenario shuffled_full --orders 50 --seed 42
   python simulate.py send samples/sample_events.json --shuffle --seed 7 --repeat E102 --check
+  python simulate.py replay                                # rebuild state from the S3 log
 
 Exit code 0 = every check passed, 1 = something failed (used by CI in Stage 12).
 """
@@ -20,7 +21,7 @@ from pathlib import Path
 
 import requests
 
-from edr_sim.client import ApiClient
+from edr_sim.client import ApiClient, ApiError
 from edr_sim.scenarios import SCENARIOS, Options, Result, Run, run_scenario
 
 DEFAULT_URL = os.environ.get("EDR_API_URL", "http://localhost:8080")
@@ -30,7 +31,23 @@ def print_title(name: str, description: str, index: int, total: int) -> None:
     print(f"\n[{index}/{total}] {name} - {description}", flush=True)
 
 
+def print_report(report: dict) -> None:
+    print("      Replay report:")
+    for key in ("run_id", "events_read", "applied", "duplicates", "stale", "dead_lettered", "orders_before",
+                "orders_after", "ledger_before", "ledger_after", "new_charges", "side_effects_skipped",
+                "reconciliation", "snapshot_s3_key", "duration_ms"):
+        if key in report:
+            print(f"        {key:22} {report[key]}")
+    for d in report.get("differences") or []:
+        print(f"        difference:            {d}")
+
+
 def print_result(result: Result) -> None:
+    if result.skipped:
+        print(f"      RESULT: SKIPPED - {result.skipped}")
+        return
+    if result.report:
+        print_report(result.report)
     print(f"      sent {result.sent} message(s) in {result.seconds:.1f}s")
     for c in result.checks:
         print(f"      [{'PASS' if c.passed else 'FAIL'}] {c.name}" + (f"  -> {c.detail}" if c.detail else ""))
@@ -127,6 +144,21 @@ def cmd_send(args) -> int:
     return 0 if result.passed else 1
 
 
+def cmd_replay(args) -> int:
+    """Triggers a replay and prints the report."""
+    client = connect(args.base_url)
+    print(f"=== CAP-33 replay ===  api={args.base_url}" + (f"  from={args.from_}" if args.from_ else ""))
+    try:
+        report = client.replay(args.from_)
+    except ApiError as e:
+        print(f"      Replay refused ({e.status}): {e.reason}")
+        return 1
+    print_report(report)
+    ok = report["reconciliation"] == "MATCH" and report["new_charges"] == 0
+    print(f"      RESULT: {'PASS' if ok else 'CHECK THE DIFFERENCES ABOVE'}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="CAP-33 streaming-style event simulator")
     parser.add_argument("--base-url", default=DEFAULT_URL, help=f"consumer service URL (default {DEFAULT_URL})")
@@ -158,6 +190,10 @@ def main() -> int:
     send.add_argument("--quiet", action="store_true", help="do not list each message as it is sent")
     send.add_argument("--show-json", action="store_true", help="also print the full JSON of each message")
     send.set_defaults(func=cmd_send)
+
+    rep = sub.add_parser("replay", help="rebuild the state from the S3 raw event log and print the report")
+    rep.add_argument("--from", dest="from_", help="only events received at/after this day or UTC time")
+    rep.set_defaults(func=cmd_replay)
 
     args = parser.parse_args()
     return args.func(args)

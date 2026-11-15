@@ -5,6 +5,9 @@ import com.edr.consumer.inbox.EventSource;
 import com.edr.consumer.inbox.InboxEvent;
 import com.edr.consumer.inbox.InboxRepository;
 import com.edr.consumer.ingest.IngestService;
+import com.edr.consumer.processing.InboxConsumer;
+import com.edr.consumer.replay.ReplayReport;
+import com.edr.consumer.replay.ReplayService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -51,6 +54,8 @@ class S3StorageIntegrationTest extends AbstractMySqlTest {
     @Autowired private S3Archiver archiver;
     @Autowired private IngestService ingestService;
     @Autowired private InboxRepository inboxRepository;
+    @Autowired private InboxConsumer consumer;
+    @Autowired private ReplayService replayService;
 
     @Test
     void rawEventsAreWrittenToTheBucketExactlyAsReceived() throws Exception {
@@ -72,5 +77,15 @@ class S3StorageIntegrationTest extends AbstractMySqlTest {
         assertEquals(String.valueOf(first.getId()), head.metadata().get("inbox-id"));
         assertEquals("E101", head.metadata().get("event-id"));
         assertEquals("application/json", head.contentType());
+
+        // full replay through the real SDK: read the log back, rebuild, reconcile, export the snapshot
+        consumer.drainAll();
+        archiver.archiveOnce();
+        ReplayReport report = replayService.replay(null);
+        assertEquals("MATCH", report.reconciliation(), String.valueOf(report.differences()));
+        assertEquals(8, report.eventsRead());
+        assertEquals(0, report.newCharges());
+        String snapshot = s3.getObjectAsBytes(b -> b.bucket("edr-test").key(report.snapshotKey())).asUtf8String();
+        assertEquals(2, snapshot.strip().lines().count());
     }
 }

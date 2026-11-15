@@ -46,6 +46,8 @@ class Result:
     seconds: float = 0.0
     metrics: dict | None = None
     error: str | None = None
+    skipped: str | None = None      # reason, e.g. "S3 is not enabled on the service"
+    report: dict | None = None      # extra result to print, e.g. the replay report
 
     @property
     def passed(self) -> bool:
@@ -226,6 +228,39 @@ def shuffled_full(r: Run) -> None:
                  "fewer than 4 structural dead letters")
 
 
+def replay(r: Run) -> None:
+    """Messy stream -> processed -> archived to S3 -> replay rebuilds the same state with no new charges."""
+    if not r.client.metrics().get("s3_enabled"):
+        r.result.skipped = "S3 is not enabled on the service (set S3_ENABLED=true) - replay reads the S3 log"
+        return
+    n = max(4, r.opts.orders // 2)
+    events = r.factory.random_orders(n, r.rng)
+    stream = faults.duplicate(events, max(2, n // 2), r.rng)
+    stream += [m for m, _, _ in faults.poison_set(r.factory.order_id(1), r.factory.run_id, r.factory.now())]
+    r.send(faults.shuffle(stream, r.rng))
+    r.wait()
+    r.client.wait_until_archived(timeout=r.opts.timeout)
+
+    prefix = f"ORD-{r.factory.run_id}-"
+    before = {o["order_id"]: o for o in r.client.orders() if o["order_id"].startswith(prefix)}
+    charges_before = len(r.client.ledger())
+
+    report = r.client.replay()
+    r.result.report = report
+
+    after = {o["order_id"]: o for o in r.client.orders() if o["order_id"].startswith(prefix)}
+    expected_charges = len(expected_state(r.arrivals).charges)
+    r.check("reconciliation", report["reconciliation"], "MATCH")
+    r.check("events read from S3 = messages sent", report["events_read"], r.result.sent)
+    r.check("new charges during replay", report["new_charges"], 0)
+    r.check("charges skipped (already in ledger)", report["side_effects_skipped"], expected_charges)
+    r.check("ledger rows unchanged", len(r.client.ledger()), charges_before)
+    r.check("orders identical before and after",
+            {k: (v["status"], money(v["amount_paid"]), v["last_version"]) for k, v in after.items()},
+            {k: (v["status"], money(v["amount_paid"]), v["last_version"]) for k, v in before.items()})
+    r.check_against_oracle()
+
+
 SCENARIOS: dict[str, tuple[str, Callable[[Run], None]]] = {
     "duplicate_payment":   ("Payment delivered 3x is charged once", duplicate_payment),
     "out_of_order_status": ("v3, v2, v1 arrive reversed; final state still correct", out_of_order_status),
@@ -233,10 +268,12 @@ SCENARIOS: dict[str, tuple[str, Callable[[Run], None]]] = {
     "partial_side_effect": ("Crash after charge rolls back and retries; one charge", partial_side_effect),
     "shuffled_full":       ("Evaluator test: shuffled, duplicated, delayed, poisoned stream", shuffled_full),
     "sample":              ("samples/sample_events.json in file order", sample),
+    "replay":              ("Rebuild state from the S3 log: same result, no new charges", replay),
 }
 
-# 'sample' uses fixed ids (ORD-1, E102 ...) so it always starts from an empty database
-NEEDS_RESET = {"sample"}
+# 'sample' uses fixed ids (ORD-1, E102 ...) and 'replay' replays the current dataset,
+# so both always start from an empty database
+NEEDS_RESET = {"sample", "replay"}
 
 
 def run_scenario(name: str, client: ApiClient, seed: int, opts: Options) -> Result:

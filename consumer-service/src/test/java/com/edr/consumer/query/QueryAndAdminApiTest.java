@@ -67,6 +67,17 @@ class QueryAndAdminApiTest extends AbstractMySqlTest {
     }
 
     @Test
+    void replayExplainsThatItNeedsS3WhenS3IsOff() throws Exception {
+        // MockMvc does not render Spring Boot's JSON error body, so check the reason on the exception
+        mockMvc.perform(post("/replay"))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        String.valueOf(result.getResolvedException()).contains("S3_ENABLED=true")));
+        mockMvc.perform(get("/replay-runs")).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
     void adminArmsFaultAndResets() throws Exception {
         mockMvc.perform(post("/admin/faults/fail-once").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"event_ids\":[\"E-NEVER-SENT\"]}"))

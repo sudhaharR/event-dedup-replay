@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -38,34 +37,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @TestPropertySource(properties = {"s3.enabled=true", "s3.bucket=test-bucket", "s3.region=ap-south-1", "s3.prefix=dev/"})
 class S3ArchiverTest extends AbstractMySqlTest {
 
-    static class FakeStore implements RawEventStore {
-        final Map<String, String> objects = new ConcurrentSkipListMap<>();   // sorted by key
-        volatile boolean down;
-
-        @Override
-        public void put(String key, String body, Map<String, String> metadata) {
-            if (down) {
-                throw new IllegalStateException("S3 unreachable (simulated outage)");
-            }
-            objects.put(key, body);
-        }
-
-        @Override
-        public String location() {
-            return "fake://test-bucket";
-        }
-    }
-
     @TestConfiguration
     static class FakeStoreConfig {
         @Bean
         @Primary
-        FakeStore fakeStore() {
-            return new FakeStore();
+        FakeRawEventStore fakeStore() {
+            return new FakeRawEventStore();
         }
     }
 
-    @Autowired private FakeStore store;
+    @Autowired private FakeRawEventStore store;
     @Autowired private S3Archiver archiver;
     @Autowired private IngestService ingestService;
     @Autowired private InboxConsumer consumer;
@@ -78,8 +59,7 @@ class S3ArchiverTest extends AbstractMySqlTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        store.objects.clear();
-        store.down = false;
+        store.reset();
         sample = Files.readString(Path.of("../simulator/samples/sample_events.json"));
     }
 

@@ -68,8 +68,13 @@ public class InboxConsumer {
 
     /** Runs cycles until nothing is left to do. Used by tests and on demand. */
     public int drainAll() {
+        return drainAll(MAX_DRAIN_ROUNDS);
+    }
+
+    /** Same, with a custom upper bound on cycles (each cycle handles up to 100 messages). */
+    public synchronized int drainAll(int maxRounds) {
         int total = 0;
-        for (int round = 0; round < MAX_DRAIN_ROUNDS; round++) {
+        for (int round = 0; round < maxRounds; round++) {
             int handled = runOnce();
             total += handled;
             if (handled == 0 && inboxRepository.countByStatus(InboxStatus.PENDING) == 0) {

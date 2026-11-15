@@ -65,7 +65,9 @@ public class QueryController {
             m.put("s3_archive_backlog",
                     jdbc.queryForObject("SELECT COUNT(*) FROM inbox WHERE s3_key IS NULL", Long.class));
             m.put("s3_dlq_backlog",
-                    jdbc.queryForObject("SELECT COUNT(*) FROM dead_letter WHERE s3_key IS NULL", Long.class));
+                    jdbc.queryForObject("""
+                            SELECT COUNT(*) FROM dead_letter d JOIN inbox i ON i.id = d.inbox_id
+                            WHERE d.s3_key IS NULL AND i.source = 'LIVE'""", Long.class));
             ArchiveStatus status = archiveStatus.getIfAvailable();
             if (status != null) {
                 m.put("s3_uploaded", status.uploaded());
@@ -75,6 +77,11 @@ public class QueryController {
                 m.put("s3_last_error", status.lastError());
             }
         }
+        List<Map<String, Object>> lastReplay = jdbc.queryForList(
+                "SELECT id, status, finished_at FROM replay_runs ORDER BY id DESC LIMIT 1");
+        m.put("last_replay_id", lastReplay.isEmpty() ? null : lastReplay.get(0).get("id"));
+        m.put("last_replay_status", lastReplay.isEmpty() ? null : lastReplay.get(0).get("status"));
+        m.put("last_replay_finished_at", lastReplay.isEmpty() ? null : lastReplay.get(0).get("finished_at"));
         return m;
     }
 

@@ -9,6 +9,15 @@ import requests
 from .events import Message
 
 
+class ApiError(Exception):
+    """An HTTP error from the service, with the reason it gave."""
+
+    def __init__(self, status: int, reason: str):
+        super().__init__(f"HTTP {status}: {reason}")
+        self.status = status
+        self.reason = reason
+
+
 class ApiClient:
 
     def __init__(self, base_url: str, timeout: float = 10.0):
@@ -70,7 +79,36 @@ class ApiClient:
         self.session.post(f"{self.base_url}/admin/faults/fail-once", json={"event_ids": event_ids},
                           timeout=self.timeout).raise_for_status()
 
+    # ------------------------------------------------------------ replay
+
+    def replay(self, from_: str | None = None) -> dict:
+        """POST /replay. Raises ApiError with the server's reason if replay is refused (400 / 409)."""
+        r = self.session.post(f"{self.base_url}/replay", params={"from": from_} if from_ else None,
+                              timeout=max(self.timeout, 300))
+        if r.status_code >= 400:
+            try:
+                reason = r.json().get("message") or r.text
+            except ValueError:
+                reason = r.text
+            raise ApiError(r.status_code, reason)
+        return r.json()
+
+    def replay_runs(self) -> list[dict]:
+        return self._get("/replay-runs")
+
     # ------------------------------------------------------------ waiting
+
+    def wait_until_archived(self, timeout: float = 60.0) -> dict:
+        """Waits until every message and dead letter has been copied to S3 (no-op if S3 is off)."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            m = self.metrics()
+            if not m.get("s3_enabled") or (m.get("s3_archive_backlog") == 0 and m.get("s3_dlq_backlog") == 0):
+                return m
+            time.sleep(0.5)
+        m = self.metrics()
+        raise TimeoutError(f"S3 archive backlog not empty after {timeout}s "
+                           f"(backlog={m.get('s3_archive_backlog')}, last error: {m.get('s3_last_error')})")
 
     def wait_until_idle(self, timeout: float = 60.0, settle: float = 1.2) -> dict:
         """Waits until no message is PENDING and the counters stop changing for `settle` seconds

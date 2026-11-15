@@ -1,8 +1,14 @@
 package com.edr.consumer.archive;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Object names in the bucket.
@@ -30,6 +36,31 @@ public final class S3Keys {
     public static String deadLetter(String prefix, long inboxId, String eventId, Instant receivedAt) {
         return key(prefix, "dlq", inboxId, eventId, receivedAt);
     }
+
+    /** Projection snapshot written after a replay: <prefix>snapshots/2026/11/13/replay-000007-091502123.json */
+    public static String snapshot(String prefix, long replayRunId, Instant at) {
+        return prefix + "snapshots/" + DAY.format(at) + "/replay-" + String.format("%06d", replayRunId)
+                + "-" + TIME.format(at) + ".json";
+    }
+
+    /** Reads the receive time back from a raw/dlq key; empty if the key is not in that format. */
+    public static Optional<Instant> receivedAt(String key) {
+        Matcher m = KEY_TIME.matcher(key);
+        if (!m.find()) {
+            return Optional.empty();
+        }
+        try {
+            LocalDate day = LocalDate.of(Integer.parseInt(m.group(1)), Integer.parseInt(m.group(2)),
+                    Integer.parseInt(m.group(3)));
+            LocalTime time = LocalTime.parse(m.group(4), DateTimeFormatter.ofPattern("HHmmssSSS"));
+            return Optional.of(LocalDateTime.of(day, time).toInstant(ZoneOffset.UTC));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static final Pattern KEY_TIME =
+            Pattern.compile("(?:raw|dlq)/(\\d{4})/(\\d{2})/(\\d{2})/(\\d{9})-\\d{12}-");
 
     private static String key(String prefix, String area, long inboxId, String eventId, Instant at) {
         return prefix + area + "/" + DAY.format(at) + "/" + TIME.format(at) + "-"

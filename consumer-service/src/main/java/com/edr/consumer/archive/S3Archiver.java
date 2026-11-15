@@ -81,7 +81,7 @@ public class S3Archiver {
     }
 
     private int archiveDeadLetters() {
-        List<DeadLetter> pending = deadLetterRepository.findTop200ByS3KeyIsNullOrderByIdAsc();
+        List<DeadLetter> pending = deadLetterRepository.findArchivePending();
         int done = 0;
         for (DeadLetter d : pending) {
             String key = S3Keys.deadLetter(prefix, d.getInboxId(), d.getEventId(), d.getReceivedAt());
