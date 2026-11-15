@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/"
+    "test": "node --test src/lib/lib.test.js"
   },
   "dependencies": {
     "react": "19.2.9",

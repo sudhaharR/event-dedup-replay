@@ -1,3 +1,9 @@
+# One command starts the whole system:  docker compose up -d --build
+#   MySQL          -> localhost:${MYSQL_PORT}   (schema from db/init on first start)
+#   consumer API   -> localhost:${API_PORT:-8080}
+#   dashboard      -> localhost:${DASHBOARD_PORT:-3000}
+# All settings (passwords, S3, Snowflake) come from the project .env file.
+
 services:
   mysql:
     image: mysql:8.4
@@ -18,6 +24,38 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+
+  consumer-service:
+    build: ./consumer-service
+    image: edr/consumer-service:local
+    container_name: edr-consumer-service
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # S3, Snowflake and DB credentials from .env ...
+    env_file: .env
+    # ... but inside Docker the database is the "mysql" container on its internal port
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      SERVER_PORT: "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    volumes:
+      # Snowflake private key: ../keys/snowflake_rsa_key.p8 in .env resolves to /app/keys
+      - ./keys:/app/keys:ro
+
+  dashboard:
+    build: ./dashboard
+    image: edr/dashboard:local
+    container_name: edr-dashboard
+    restart: unless-stopped
+    depends_on:
+      consumer-service:
+        condition: service_healthy
+    ports:
+      - "${DASHBOARD_PORT:-3000}:80"
 
 volumes:
   mysql_data:
