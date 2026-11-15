@@ -37,10 +37,13 @@ public final class S3Keys {
         return key(prefix, "dlq", inboxId, eventId, receivedAt);
     }
 
-    /** Projection snapshot written after a replay: <prefix>snapshots/2026/11/13/replay-000007-091502123.json */
+    /**
+     * Projection snapshot written after a replay: <prefix>snapshots/2026/11/13/091502123-replay-000007.json
+     * Time first, so the alphabetically last key is always the latest snapshot (run ids restart after a reset).
+     */
     public static String snapshot(String prefix, long replayRunId, Instant at) {
-        return prefix + "snapshots/" + DAY.format(at) + "/replay-" + String.format("%06d", replayRunId)
-                + "-" + TIME.format(at) + ".json";
+        return prefix + "snapshots/" + DAY.format(at) + "/" + TIME.format(at)
+                + "-replay-" + String.format("%06d", replayRunId) + ".json";
     }
 
     /** Reads the receive time back from a raw/dlq key; empty if the key is not in that format. */

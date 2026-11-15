@@ -96,6 +96,22 @@ class ApiClient:
     def replay_runs(self) -> list[dict]:
         return self._get("/replay-runs")
 
+    # ------------------------------------------------------------ reconciliation (Snowflake)
+
+    def reconcile(self, refresh: bool = True) -> dict:
+        """POST /reconciliation/refresh (load new S3 files, then reconcile) or GET /reconciliation."""
+        if refresh:
+            r = self.session.post(f"{self.base_url}/reconciliation/refresh", timeout=max(self.timeout, 300))
+        else:
+            r = self.session.get(f"{self.base_url}/reconciliation", timeout=max(self.timeout, 120))
+        if r.status_code >= 400:
+            try:
+                reason = r.json().get("message") or r.text
+            except ValueError:
+                reason = r.text
+            raise ApiError(r.status_code, reason)
+        return r.json()
+
     # ------------------------------------------------------------ waiting
 
     def wait_until_archived(self, timeout: float = 60.0) -> dict:

@@ -78,6 +78,14 @@ class QueryAndAdminApiTest extends AbstractMySqlTest {
     }
 
     @Test
+    void reconciliationExplainsThatItNeedsSnowflakeWhenItIsOff() throws Exception {
+        mockMvc.perform(get("/reconciliation"))
+                .andExpect(status().isBadRequest())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(
+                        String.valueOf(result.getResolvedException()).contains("SNOWFLAKE_ENABLED=true")));
+    }
+
+    @Test
     void adminArmsFaultAndResets() throws Exception {
         mockMvc.perform(post("/admin/faults/fail-once").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"event_ids\":[\"E-NEVER-SENT\"]}"))

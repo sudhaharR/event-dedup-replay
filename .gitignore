@@ -28,3 +28,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Snowflake key pair
+keys/
+*.p8

@@ -6,6 +6,7 @@
   python simulate.py run --scenario shuffled_full --orders 50 --seed 42
   python simulate.py send samples/sample_events.json --shuffle --seed 7 --repeat E102 --check
   python simulate.py replay                                # rebuild state from the S3 log
+  python simulate.py reconcile                             # independent check in Snowflake
 
 Exit code 0 = every check passed, 1 = something failed (used by CI in Stage 12).
 """
@@ -159,6 +160,41 @@ def cmd_replay(args) -> int:
     return 0 if ok else 1
 
 
+def cmd_reconcile(args) -> int:
+    """Independent check in Snowflake: expected state from the raw S3 log vs the latest replay snapshot."""
+    client = connect(args.base_url)
+    print(f"=== CAP-33 reconciliation (Snowflake) ===  api={args.base_url}"
+          + ("" if args.no_refresh else "  (loading new S3 files first)"))
+    try:
+        r = client.reconcile(refresh=not args.no_refresh)
+    except ApiError as e:
+        print(f"      Reconciliation failed ({e.status}): {e.reason}")
+        return 1
+    s, c = r["summary"], r["charges"]
+    print(f"      checked by:        {r.get('checked_by')}")
+    print(f"      replay snapshot:   {s.get('snapshot_key')}  (replay run {s.get('replay_run_id')})")
+    print(f"      orders compared:   {s.get('orders_compared')}   matched: {s.get('matched')}   different: {s.get('different')}")
+    print(f"      state:             {s.get('overall')}")
+    print(f"      charges:           {c['result']}  (expected {c['expected_charges']}, in ledger {c['ledger_charges']})")
+    for e in c.get("missing_charges") or []:
+        print(f"        missing charge:    {e}")
+    for e in c.get("unexpected_charges") or []:
+        print(f"        unexpected charge: {e}")
+    for d in r.get("differences") or []:
+        print(f"        difference: {d.get('order_id')}: {d.get('result')}  expected={d.get('expected_status')} "
+              f"v{d.get('expected_version')}  snapshot={d.get('snapshot_status')} v{d.get('snapshot_version')}")
+    metrics = r.get("daily_metrics") or []
+    if metrics:
+        print("      daily metrics (from the raw log):")
+        for m in metrics:
+            print(f"        {m.get('day')}  messages={m.get('messages')} invalid={m.get('invalid_messages')} "
+                  f"duplicates={m.get('duplicate_deliveries')} ({m.get('duplicate_rate_pct')}%) "
+                  f"avg_delay_ms={m.get('avg_delivery_delay_ms')}")
+    ok = s.get("overall") == "MATCH" and c["result"] == "MATCH"
+    print(f"      RESULT: {'PASS' if ok else 'CHECK THE DETAILS ABOVE'}")
+    return 0 if ok else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="CAP-33 streaming-style event simulator")
     parser.add_argument("--base-url", default=DEFAULT_URL, help=f"consumer service URL (default {DEFAULT_URL})")
@@ -194,6 +230,10 @@ def main() -> int:
     rep = sub.add_parser("replay", help="rebuild the state from the S3 raw event log and print the report")
     rep.add_argument("--from", dest="from_", help="only events received at/after this day or UTC time")
     rep.set_defaults(func=cmd_replay)
+
+    rec = sub.add_parser("reconcile", help="independent check in Snowflake (expected state vs replay snapshot)")
+    rec.add_argument("--no-refresh", action="store_true", help="do not load new S3 files first")
+    rec.set_defaults(func=cmd_reconcile)
 
     args = parser.parse_args()
     return args.func(args)

@@ -117,7 +117,7 @@ public class ReplayService {
             List<String> differences = compare(before, after);
             int ledgerAfter = count("SELECT COUNT(*) FROM payment_ledger");
             int skipped = sideEffectsSkipped(chargesBefore);
-            String snapshotKey = exportSnapshot(runId, after);
+            String snapshotKey = exportSnapshot(runId, startKey, after);
 
             ReplayReport report = new ReplayReport(runId, startKey, keys.size(),
                     replayCount("APPLIED"), replayCount("DUPLICATE"), replayCount("STALE"),
@@ -252,13 +252,17 @@ public class ReplayService {
         return differences;
     }
 
-    /** Rebuilt projection as JSON Lines in S3 (one order per line) - Snowflake reconciles against it. */
-    private String exportSnapshot(long runId, Map<String, Map<String, String>> after) {
+    /**
+     * Rebuilt projection as JSON Lines in S3 (one order per line). Snowflake reconciles against it;
+     * start_key tells Snowflake which part of the raw log this replay covered.
+     */
+    private String exportSnapshot(long runId, String startKey, Map<String, Map<String, String>> after) {
         String key = S3Keys.snapshot(prefix, runId, Instant.now());
         StringBuilder lines = new StringBuilder();
         after.forEach((orderId, values) -> {
             Map<String, Object> line = new LinkedHashMap<>();
             line.put("replay_run_id", runId);
+            line.put("start_key", startKey);
             line.put("order_id", orderId);
             values.forEach((k, v) -> line.put(k, "null".equals(v) ? null : v));
             lines.append(jsonMapper.writeValueAsString(line)).append('\n');

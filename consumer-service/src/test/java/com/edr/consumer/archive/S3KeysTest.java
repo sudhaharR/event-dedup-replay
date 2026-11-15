@@ -17,6 +17,7 @@ class S3KeysTest {
     void rawKeyIsPartitionedByDayAndSortableByArrival() {
         assertEquals("dev/raw/2026/11/13/091502123-000000000042-E102.json", S3Keys.raw("dev/", 42, "E102", T));
         assertEquals("dlq/2026/11/13/091502123-000000000046-E300.json", S3Keys.deadLetter("", 46, "E300", T));
+        assertEquals("dev/snapshots/2026/11/13/091502123-replay-000007.json", S3Keys.snapshot("dev/", 7, T));
     }
 
     @Test

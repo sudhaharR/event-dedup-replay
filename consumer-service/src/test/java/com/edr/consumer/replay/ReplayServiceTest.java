@@ -100,6 +100,7 @@ class ReplayServiceTest extends AbstractMySqlTest {
         assertEquals(2, lines.length);
         JsonNode first = jsonMapper.readTree(lines[0]);
         assertEquals("ORD-1", first.get("order_id").stringValue());
+        assertEquals(r.startKey(), first.get("start_key").stringValue(), "Snowflake needs the replay window");
         assertTrue(r.snapshotKey().startsWith("dev/snapshots/"));
 
         Map<String, Object> run = jdbc.queryForMap("SELECT * FROM replay_runs WHERE id = ?", r.runId());

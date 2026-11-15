@@ -16,8 +16,25 @@ import java.util.List;
  * Starts a throwaway MySQL 8.4 container (Testcontainers) loaded with ../db/init/*.sql,
  * so tests never touch your development database on port 3307. Needs Docker Desktop running.
  * The scheduler is switched off: tests call InboxConsumer directly, so results are deterministic.
+ *
+ * The application also reads the developer's ../.env file. The values below override it, so tests
+ * behave the same on every machine: S3 and Snowflake are OFF by default and real AWS keys or
+ * Snowflake keys are never visible to a test.
+ * Tests that need S3 switch it on themselves (s3.enabled=true) with a fake store or S3Mock.
  */
-@SpringBootTest(properties = "consumer.scheduler.enabled=false")
+@SpringBootTest(properties = {
+        "consumer.scheduler.enabled=false",
+        "S3_ENABLED=false",
+        "S3_BUCKET=",
+        "S3_PREFIX=",
+        "S3_ENDPOINT=",
+        "AWS_ACCESS_KEY_ID=",
+        "AWS_SECRET_ACCESS_KEY=",
+        "SNOWFLAKE_ENABLED=false",
+        "SNOWFLAKE_ACCOUNT=",
+        "SNOWFLAKE_PRIVATE_KEY_FILE=",
+        "consumer.fault-injection.fail-once-event-ids="
+})
 public abstract class AbstractMySqlTest {
 
     @ServiceConnection
