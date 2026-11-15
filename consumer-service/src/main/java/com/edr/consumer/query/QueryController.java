@@ -85,12 +85,17 @@ public class QueryController {
         return m;
     }
 
+    /** Dead letters of live traffic (like the metrics); include_replay=true also shows replay copies. */
     @GetMapping("/dead-letters")
-    public List<Map<String, Object>> deadLetters(@RequestParam(defaultValue = "200") int limit) {
+    public List<Map<String, Object>> deadLetters(@RequestParam(defaultValue = "200") int limit,
+                                                 @RequestParam(name = "include_replay", defaultValue = "false")
+                                                 boolean includeReplay) {
         return jdbc.queryForList("""
-                SELECT id, inbox_id, event_id, entity_id, error_code, error_message, status,
-                       raw_payload, received_at, dead_lettered_at
-                FROM dead_letter ORDER BY id DESC LIMIT ?""", clamp(limit));
+                SELECT d.id, d.inbox_id, d.event_id, d.entity_id, d.error_code, d.error_message, d.status,
+                       d.raw_payload, d.received_at, d.dead_lettered_at, i.source
+                FROM dead_letter d JOIN inbox i ON i.id = d.inbox_id
+                WHERE i.source = 'LIVE' OR ?
+                ORDER BY d.id DESC LIMIT ?""", includeReplay, clamp(limit));
     }
 
     @GetMapping("/ledger")

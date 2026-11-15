@@ -1,0 +1,21 @@
+{
+  "name": "edr-dashboard",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CAP-33 Event Dedup & Replay - monitoring dashboard",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node --test src/lib/"
+  },
+  "dependencies": {
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "6.1.2",
+    "vite": "8.3.5"
+  }
+}
